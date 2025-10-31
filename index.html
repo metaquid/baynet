@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>BAYNET: CistoNet Interactive Simulator</title>
+    <link rel="stylesheet" href="baynet-style.css">
+</head>
+<body>
+    <div id="disclaimer-modal">
+        <div id="disclaimer-content" class="modal-content">
+            <!-- Disclaimer content will be loaded from the model file -->
+        </div>
+    </div>
+
+    <div id="settings-modal">
+        <div class="modal-content">
+            <h2 data-translate="settings_title">System Settings</h2>
+            <div class="settings-field">
+                <label for="setting-language" data-translate="settings_language">Default Language</label>
+                <select id="setting-language">
+                    <option value="en">English</option>
+                    <option value="it">Italiano</option>
+                </select>
+            </div>
+            <div class="settings-field">
+                <label for="setting-theme" data-translate="settings_theme">Default Theme</label>
+                <select id="setting-theme">
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                </select>
+            </div>
+            <div class="settings-field">
+                <label for="setting-network" data-translate="settings_network">Default Network</label>
+                <select id="setting-network">
+                    <option value="CistoNet">CistoNet (Bladder Cancer)</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button id="settings-cancel-btn" data-translate="settings_cancel">Cancel</button>
+                <button id="settings-save-btn" data-translate="settings_save">Save and Reload</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ai-selection-modal">
+        <div class="modal-content">
+            <div id="ai-modal-drag-handle" style="cursor: grab; padding-bottom: 5px; text-align: center;">
+                <h2 id="ai-modal-title" style="margin: 0;">AI Assistant</h2>
+                <p id="ai-modal-subtitle" data-translate="ai_modal_subtitle" style="margin-top: 5px; margin-bottom: 0;"></p>
+            </div>
+            <hr>
+            <button id="ai-action-analyze" class="ai-action-btn" data-translate="ai_modal_analyze">Analyze Treatment Strategy</button>
+            <button id="ai-action-summarize" class="ai-action-btn" data-translate="ai_modal_summarize">Summarize Current Patient</button>
+            <button id="ai-action-create" class="ai-action-btn" data-translate="ai_modal_create">Create New Patient Case</button>
+            <div class="modal-buttons">
+                <button id="ai-cancel-btn" data-translate="settings_cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="alert-modal">
+        <div class="modal-content">
+            <div id="alert-drag-handle" style="cursor: grab; padding-bottom: 15px; text-align: center;">
+                 <h2 id="alert-title" style="margin: 0;"></h2>
+            </div>
+            <div id="alert-body" class="modal-body"></div>
+            <div class="modal-buttons">
+                <button id="alert-ok-btn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="guide-container">
+        <div id="guide-overlay">
+            <div id="guide-overlay-top" class="guide-overlay-panel"></div>
+            <div id="guide-overlay-bottom" class="guide-overlay-panel"></div>
+            <div id="guide-overlay-left" class="guide-overlay-panel"></div>
+            <div id="guide-overlay-right" class="guide-overlay-panel"></div>
+        </div>
+        <div id="guide-highlight"></div>
+        <div id="guide-popover">
+            <h3 id="guide-popover-title"></h3>
+            <p id="guide-popover-content"></p>
+            <div id="guide-popover-nav">
+                <div class="btn-group">
+                    <button id="guide-mute-btn" class="guide-btn">🔊</button>
+                    <button id="guide-prev-btn" class="guide-btn">Back</button>
+                    <button id="guide-end-btn" class="guide-btn">End Tour</button>
+                </div>
+                <span id="guide-popover-progress"></span>
+                <button id="guide-next-btn" class="guide-btn">Next</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <svg id="bayesian-svg"></svg>
+        <div id="tooltip" style="position: absolute; visibility: hidden; opacity: 0; background-color: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; font-size: 14px; max-width: 350px; pointer-events: none; transition: opacity 0.2s; z-index: 10;"></div>
+    </div>
+    
+    <div id="resizer"></div>
+
+    <div class="controls">
+        <div id="main-app-container">
+            <div id="controls-header">
+                <button id="settings-btn" title="System Settings">⚙️</button>
+                <h1 id="main-title">BAYNET</h1>
+                <h2 id="model-title">CistoNet</h2>
+                <h3 id="model-description" class="model-description" data-translate="model_description_key"></h3>
+                
+                <div id="mode-selector">
+                    <button class="mode-btn" id="mode-guide" data-translate="mode_guide">Guide</button>
+                    <button class="mode-btn active" id="mode-base" data-translate="mode_base">Base</button>
+                    <button class="mode-btn" id="mode-expert" data-translate="mode_expert">Expert</button>
+                </div>
+            </div>
+            
+            <div id="main-app-content">
+                <div class="tab-nav">
+                    <button class="tab-btn active" data-tab="input-tab" data-translate="tab_input">Data Input</button>
+                    <button class="tab-btn" data-tab="analysis-tab" data-translate="tab_analysis">Analysis & Prognosis</button>
+                    <button class="tab-btn" data-tab="info-tab" data-translate="tab_info">Info</button>
+                </div>
+
+                <div id="input-tab" class="tab-content active">
+                    <div id="main-action-buttons" class="btn-group">
+                        <button id="toggle-sim" data-translate="toggle_sim_start"></button>
+                        <button id="run-ai-assistant" class="action-btn" style="background-color: #9b59b6;">
+                            <span data-translate="run_ai_assistant"></span><span id="ai-ready-badge"></span>
+                        </button>
+                    </div>
+                    <div class="btn-group">
+                         <button id="theme-toggle" class="action-btn" style="background-color: #34495e;" data-translate="theme_toggle_light"></button>
+                        <button id="reset-btn" class="action-btn" style="background-color: #7f8c8d;" data-translate="reset_btn"></button>
+                        <button id="share-btn" class="action-btn" style="background-color: #3498db;" data-translate="share_btn"></button>
+                    </div>
+                     <div class="btn-grid">
+                        <button id="scenario-lr-typical" class="action-btn" style="background-color: #27ae60; font-size: 12px;" data-translate="scenario_lr_typical"></button>
+                        <button id="scenario-lr-elderly" class="action-btn" style="background-color: #2ecc71; font-size: 12px;" data-translate="scenario_lr_elderly"></button>
+                        <button id="scenario-hr-advanced" class="action-btn" style="background-color: #c0392b; font-size: 12px;" data-translate="scenario_hr_advanced"></button>
+                        <button id="scenario-hr-aggressive" class="action-btn" style="background-color: #e74c3c; font-size: 12px;" data-translate="scenario_hr_aggressive"></button>
+                    </div>
+                    <div id="manual-inputs"></div>
+                </div>
+
+                <div id="analysis-tab" class="tab-content">
+                    <div id="prognosis-summary">
+                        <div class="summary-title" data-translate="prognosis_summary_title"></div>
+                        <div id="summary-value" class="summary-value" data-translate="calculating"></div>
+                        <div id="summary-drivers" class="summary-drivers"></div>
+                    </div>
+                    <div id="clinical-validator">
+                        <h2 data-translate="clinical_validator_title"></h2>
+                        <div id="clinical-validator-content"></div>
+                    </div>
+                    <div id="simulation-goals">
+                        <h2 style="margin-bottom: 10px;" data-translate="simulation_goals_title"></h2>
+                        <div id="goal-controls"></div>
+                    </div>
+                    <div id="model-calibration">
+                        <h2 style="margin-top:25px; text-align:center;" data-translate="model_calibration_title"></h2>
+                        <div id="advanced-controls"></div>
+                    </div>
+                </div>
+
+                <div id="info-tab" class="tab-content">
+                    <div id="info-tab-content-wrapper">
+                        <!-- Info content will be dynamically inserted here by the engine -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="mobile-inspector">
+                 <div id="mobile-inspector-header">
+                    <span id="mobile-inspector-title"></span>
+                    <button id="close-inspector-btn">Back</button>
+                </div>
+                <div id="mobile-inspector-tooltip"></div>
+                <div id="mobile-inspector-controls"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- The BAYNET application is now loaded from external files -->
+    <script src="cistonet-model.js"></script>
+    <script src="baynet-guide.js"></script>
+    <script src="baynet-engine.js"></script>
+
+</body>
+</html>
