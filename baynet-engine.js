@@ -1,5 +1,5 @@
 /**
- * BAYNET Engine v0.53
+ * BAYNET Engine v0.54
  * A generic, domain-agnostic Bayesian Network simulation engine.
  * It requires a model configuration object to be provided.
  * by SMZ
@@ -1294,6 +1294,20 @@ class AIAgent {
         this.api = window.BayNetAPI;
         this.T = app.T.bind(app);
         this.isRunning = false;
+        this.session = null;
+    }
+
+    async _initializeSession() {
+        if (this.app.isRealAIAvailable && !this.session) {
+            try {
+                this.session = await window.ai.createTextSession();
+            } catch (e) {
+                console.error("Impossibile creare la sessione AI:", e);
+                this.app.showAlert("Errore AI", "Non è stato possibile inizializzare il modello AI locale.");
+                return false;
+            }
+        }
+        return true;
     }
 
     async run(task) {
@@ -1303,15 +1317,27 @@ class AIAgent {
         this.api.toggleAutoSim('stop');
         document.getElementById('ai-selection-modal').classList.remove('visible');
 
+        if (!(await this._initializeSession())) {
+            this.isRunning = false;
+            document.querySelectorAll('.ai-action-btn').forEach(btn => btn.disabled = false);
+            return;
+        }
+
         try {
             switch (task) {
-                case 'analyze': await this._runAnalyzeStrategy(); break;
-                case 'summarize': this._runSummarizeScenario(); break;
-                case 'create': this._runCreateScenario(); break;
+                case 'analyze':
+                    await this._runAnalyzeStrategy();
+                    break;
+                case 'summarize':
+                    await this._runSummarizeScenario();
+                    break;
+                case 'create':
+                    await this._runCreateScenario();
+                    break;
             }
         } catch (e) {
-            console.error("AI Assistant Error:", e);
-            this.app.showAlert("Error", "An error occurred during AI analysis.");
+            console.error("Errore Assistente AI:", e);
+            this.app.showAlert("Errore", "Si è verificato un errore durante l'analisi AI.");
         } finally {
             this.isRunning = false;
             document.querySelectorAll('.ai-action-btn').forEach(btn => btn.disabled = false);
@@ -1337,12 +1363,117 @@ class AIAgent {
     }
     
     async _runAnalyzeStrategy() {
-        const initialResults = this.api.getResults();
         const initialStateJson = this._getCurrentStateAsJson();
+        const initialResults = this.api.getResults();
+        this.app.showAlert(this.T('ai_alert_title_real'), `<i>${this._getAIName()}: ${this.T('ai_analyze_intro')}</i>`, true);
 
-        this.app.showAlert(this.T('ai_alert_title_sim'), `<i>${this._getAIName()}: ${this.T('ai_analyze_intro')}</i>`, true);
+        if (this.app.isRealAIAvailable && this.session) {
+            try {
+                const prompt = `Sei un assistente medico esperto in urologia. Analizza i dati del paziente con cancro alla vescica forniti in JSON: ${initialStateJson}. 
+                Il tuo obiettivo è raccomandare la migliore strategia terapeutica. Valuta le seguenti opzioni: 
+                1. 'Conservativa': { "TREATMENT_TYPE": 0, "SECOND_LOOK": 1, "ADJUVANT_TX": 1 }
+                2. 'Radicale': { "TREATMENT_TYPE": 1, "SECOND_LOOK": 0, "ADJUVANT_TX": 0 }
+                Considera il bilanciamento tra sopravvivenza e qualità della vita.
+                Rispondi ESCLUSIVAMENTE con un oggetto JSON con questa struttura:
+                {
+                  "strategia_raccomandata": "Nome della strategia (es. Conservativa)",
+                  "commento": "Una breve spiegazione del perché hai scelto questa strategia.",
+                  "changes": { "TREATMENT_TYPE": 0, "SECOND_LOOK": 1, "ADJUVANT_TX": 1 }
+                }`;
+
+                const aiResultText = await this.session.prompt(prompt);
+                const aiResult = JSON.parse(aiResultText);
+                
+                this.api.setScenario(aiResult.changes);
+                const finalResults = this.api.getResults();
+
+                const alertBody = `
+                    <p><i>${this._getAIName()}: Analisi completata.</i></p><hr>
+                    <strong>${this.T('ai_alert_optimal_found')}</strong>
+                    <ul>
+                        <li><strong>${this.T('ai_alert_strategy')}:</strong> ${aiResult.strategia_raccomandata}</li>
+                        <li><strong>${this.T('ai_alert_prognosis')}:</strong> ${this.T('ai_alert_survival')} <b>${(finalResults.SURVIVAL.probability * 100).toFixed(0)}%</b>, ${this.T('ai_alert_qol')} <b>${(finalResults.QOL.probability * 100).toFixed(0)}%</b></li>
+                    </ul>
+                    <p><b>${this.T('ai_alert_comment')}</b> <em>${aiResult.commento}</em></p>`;
+                this.app.showAlert(this.T('ai_alert_title_real'), alertBody);
+
+            } catch (e) {
+                console.error("Errore durante l'analisi AI reale:", e);
+                this.app.showAlert("Errore AI", "Il modello AI non è riuscito a elaborare la richiesta. Esecuzione della simulazione di fallback.");
+                await this._runSimulatedAnalyzeStrategy(initialResults, initialStateJson);
+            }
+        } else {
+            await this._runSimulatedAnalyzeStrategy(initialResults, initialStateJson);
+        }
+    }
+    
+    async _runSummarizeScenario() {
+         if (this.app.isRealAIAvailable && this.session) {
+            try {
+                 const prompt = `Sei un assistente medico. Analizza i dati del paziente in JSON: ${this._getCurrentStateAsJson()}.
+                 Riassumi il profilo clinico in una frase. Identifica i 2-3 fattori di rischio principali e i 1-2 fattori protettivi chiave.
+                 Rispondi ESCLUSIVAMENTE con un oggetto JSON con la struttura:
+                 {
+                   "riassunto": "La tua sintesi qui.",
+                   "fattori_rischio": ["fattore1", "fattore2"],
+                   "fattori_protettivi": ["fattore1"]
+                 }`;
+                 
+                 const aiResultText = await this.session.prompt(prompt);
+                 const aiResult = JSON.parse(aiResultText);
+
+                 let summaryText = `<p><i>${this._getAIName()}: ${aiResult.riassunto}</i></p>`;
+                 if (aiResult.fattori_rischio.length > 0) {
+                     summaryText += `<p>${this.T('ai_summary_risk_factors', { factors: aiResult.fattori_rischio.join(', ') })}</p>`;
+                 } else {
+                     summaryText += `<p>${this.T('ai_summary_no_risks')}</p>`;
+                 }
+                 if (aiResult.fattori_protettivi.length > 0) {
+                     summaryText += `<p>${this.T('ai_summary_protective_factors', { factors: aiResult.fattori_protettivi.join(', ') })}</p>`;
+                 }
+                 this.app.showAlert(this.T('ai_summary_title'), summaryText);
+
+            } catch(e) {
+                console.error("Errore durante il riassunto AI reale:", e);
+                this._runSimulatedSummarizeScenario();
+            }
+        } else {
+            this._runSimulatedSummarizeScenario();
+        }
+    }
+    
+    async _runCreateScenario() {
+        if (this.app.isRealAIAvailable && this.session) {
+            try {
+                const nodesConfig = JSON.stringify(this.api.getNodesConfig().map(n => ({id: n.id, name: n.name})));
+                const prompt = `Sei un generatore di casi clinici per un simulatore di cancro alla vescica. I nodi di input che puoi impostare sono: ${nodesConfig}.
+                Crea uno scenario clinicamente interessante e complesso, come un paziente giovane con una malattia aggressiva.
+                Rispondi ESCLUSIVAMENTE con un oggetto JSON con la struttura:
+                {
+                  "scenario": { "ETA_PAZIENTE": 62, "STADIO_T": 1, "GRADO_G": 1, "FUMO": 0.8, "PRIOR_RECID": 0.1, "COMORBIDITIES": 0, "TUMOR_CHARS": 2, "CIS_LVI": 0.6, "HISTOLOGY": 0, "ALCOL": 0.4, "EXP_CHIR": 0.7, "TREATMENT_TYPE": 0, "SECOND_LOOK": 1, "ADJUVANT_TX": 1 },
+                  "spiegazione": "Una breve descrizione del caso clinico che hai creato e perché è interessante."
+                }`;
+
+                const aiResultText = await this.session.prompt(prompt);
+                const aiResult = JSON.parse(aiResultText);
+                
+                this.api.setScenario(aiResult.scenario);
+                const alertBody = `
+                    <p><i>${this._getAIName()}: ${this.T('ai_create_intro')}</i></p>
+                    <p>${aiResult.spiegazione}</p>`;
+                this.app.showAlert(this.T('ai_create_title'), alertBody);
+
+            } catch (e) {
+                console.error("Errore durante la creazione scenario AI reale:", e);
+                this._runSimulatedCreateScenario();
+            }
+        } else {
+            this._runSimulatedCreateScenario();
+        }
+    }
+
+    async _runSimulatedAnalyzeStrategy(initialResults, initialStateJson) {
         await new Promise(resolve => setTimeout(resolve, 1500));
-
         const strategies = [
             { nameKey: "ai_strategy_turbt_only", changes: { "TREATMENT_TYPE": 0, "SECOND_LOOK": 0, "ADJUVANT_TX": 0 } },
             { nameKey: "ai_strategy_turbt_no_look", changes: { "TREATMENT_TYPE": 0, "SECOND_LOOK": 0, "ADJUVANT_TX": 1 } },
@@ -1395,7 +1526,7 @@ class AIAgent {
         this.app.showAlert(alertTitle, alertBody);
     }
     
-    _runSummarizeScenario() {
+    _runSimulatedSummarizeScenario() {
         const nodes = this.api.getNodesConfig();
         
         let riskFactors = [];
@@ -1427,7 +1558,7 @@ class AIAgent {
         this.app.showAlert(this.T('ai_summary_title'), alertBody);
     }
 
-    _runCreateScenario() {
+    _runSimulatedCreateScenario() {
         this.app.loadScenario('hr-aggressive');
         const alertBody = `
             <p><i>${this._getAIName()}: ${this.T('ai_create_intro')}</i></p>
